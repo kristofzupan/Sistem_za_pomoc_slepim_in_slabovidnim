@@ -3,6 +3,7 @@ import math
 import cv2
 import face_recognition
 import time
+from pathlib import Path
 from mtcnn import MTCNN
 
 
@@ -119,19 +120,20 @@ modelGender = "gad/gender_net.caffemodel"
 genderNeuralNet = cv2.dnn.readNet(modelGender, configGender)
 
 MODEL_MEAN_VALUES = (78.4263377603, 87.7689143744, 114.895847746)
-ageList = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
-genderList = ['Moski', 'Zenska']
+ageList = ['(0-3)', '(4-7)', '(8-13)', '(14-22)', '(23-34)', '(35-45)', '(46-59)', '(60-100)']
+genderList = ['Male', 'Female']
 
 person_image = face_recognition.load_image_file("face_images/Kristof.jpg")
 person_encoding = face_recognition.face_encodings(person_image)[0]
 
-#neja_image = face_recognition.load_image_file("face_images/Neja.jpg")
-#neja_encoding = face_recognition.face_encodings(neja_image)[0]
+known_faces = []
+known_faces_names = []
 
-known_faces = [
-    person_encoding,
-    #neja_encoding
-]
+for p in Path('.').glob('face_images/*.jpg'):
+    person_image = face_recognition.load_image_file("face_images/" + p.name)
+    person_encoding = face_recognition.face_encodings(person_image)[0]
+    known_faces.append(person_encoding)
+    known_faces_names.append(p.name[0:len(p.name) - 4])
 
 
 def ageGender(face, faceBox):
@@ -145,13 +147,18 @@ def ageGender(face, faceBox):
     age = ageList[agePreds[0].argmax()]
 
     cv2.putText(result, f'{gender}, {age}', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-    return f'{gender}, {age}'
+    age = age[1:len(age)-1]
+    age = age.split("-")
+    if gender == "Male":
+        return f"Moški med {age[0]} in {age[1]} let"
+    else:
+        return f"Ženska med {age[0]} in {age[1]} let"
+
 
 def faceDetect(face, faceBox):
     face = cv2.resize(face, (0, 0), fx=0.25, fy=0.25)
 
     rgb_face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-    print(type(rgb_face), rgb_face.shape)
 
     face_locations = [
         (0 + 2, rgb_face.shape[1] - 2, rgb_face.shape[0] - 2, 0 + 2)
@@ -160,30 +167,40 @@ def faceDetect(face, faceBox):
 
     if (len(encoding_test_faces) > 0):
         encoding_test_face = encoding_test_faces[0]
-        print(type(encoding_test_face), encoding_test_face.shape)
 
         match = face_recognition.compare_faces(known_faces, encoding_test_face)
-        print(match)
 
-        if (match[0]):
-            cv2.putText(result, f'Kristof', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-            return True, "Kristof"
-
-        #if (match[1]):
-            #cv2.putText(result, f'Neja', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-            #return True, "Neja"
-
+        for i in range(0, len(match)):
+            if match[i]:
+                cv2.putText(result, known_faces_names[i], (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                            (0, 255, 0), 1, cv2.LINE_AA)
+                return True, known_faces_names[i]
         else:
             return False, ageGender(face, faceBox)
     else:
         return False, ageGender(face, faceBox)
 
+
+def auditoryPrompt(face_positions, frame_shape):
+    for face_id, face_box in face_positions.items():
+        if time.time() - face_box[3] > 2:
+            if (face_box[0][0] / frame_shape[1] + face_box[0][2] / frame_shape[1]) / 2 < 0.35:
+                print(face_box[2] + " je na levi.")
+            elif (face_box[0][0] / frame_shape[1] + face_box[0][2] / frame_shape[1]) / 2 > 0.65:
+                print(face_box[2] + " je na desni.")
+            else:
+                print(face_box[2] + " je naravnost pred vami.")
+
+            face_positions[face_id][3] = float('inf')
+    return face_positions
+
+
 if __name__ == '__main__':
     cv2.namedWindow("preview")
     vc = cv2.VideoCapture(0)
 
-    vc.set(3, 1280)
-    vc.set(4, 720)
+    vc.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    vc.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     prev_frame_time = 0
     new_frame_time = 0
@@ -202,13 +219,13 @@ if __name__ == '__main__':
 
         result, faces = detectFace(faceNeuralNet, frame)
 
-        if not faces:
-            print("No face detected")
+        #if not faces:
+            #print("No face detected")
 
         for faceBox in faces:
             face = frame[max(0, faceBox[1] - 10): min(faceBox[3] + 10, frame.shape[0] - 1), max(0, faceBox[0] - 10): min(faceBox[2] + 10, frame.shape[1] - 1)]
 
-            print("Prev: ", prev_face_positions)
+            #print("Prev: ", prev_face_positions)
             if len(prev_face_positions) > 0:
                 found_matching_face = False
                 for prev_id, prev_face_box in prev_face_positions.items():
@@ -217,63 +234,38 @@ if __name__ == '__main__':
                     if overlap_area > 0.5:
                         if len(prev_face_box[1]) < 2:
                             isFaceDetected, faceText = faceDetect(face, faceBox)
-                            current_face_positions[prev_id] = (faceBox, [prev_face_box[1][0], isFaceDetected], faceText)
+                            current_face_positions[prev_id] = [faceBox, [prev_face_box[1][0], isFaceDetected], faceText, prev_face_box[3]]
                         else:
                             if not any(prev_face_box[1]):
-                                current_face_positions[prev_id] = (faceBox, prev_face_box[1], ageGender(face, faceBox))
+                                current_face_positions[prev_id] = [faceBox, prev_face_box[1], ageGender(face, faceBox), prev_face_box[3]]
                             elif any(prev_face_box[1]):
                                 cv2.putText(result, prev_face_box[2], (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-                                current_face_positions[prev_id] = (faceBox, prev_face_box[1], prev_face_box[2])
+                                current_face_positions[prev_id] = [faceBox, prev_face_box[1], prev_face_box[2], prev_face_box[3]]
                             else:
                                 isFaceDetected, faceText = faceDetect(face, faceBox)
-                                current_face_positions[prev_id] = (faceBox, [prev_face_box[1][1], isFaceDetected], faceText)
-                                cv2.putText(result, prev_face_box[2], (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8,(0, 255, 0), 1, cv2.LINE_AA)
+                                current_face_positions[prev_id] = [faceBox, [prev_face_box[1][1], isFaceDetected], faceText, prev_face_box[3]]
+                                cv2.putText(result, prev_face_box[2], (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
                         found_matching_face = True
                         break
 
                 if not found_matching_face:
                     face_id_counter += 1
                     isFaceDetected, faceText = faceDetect(face, faceBox)
-                    current_face_positions[face_id_counter] = (faceBox, [isFaceDetected], faceText)
+                    current_face_positions[face_id_counter] = [faceBox, [isFaceDetected], faceText, time.time()]
 
             else:
                 for i in range(len(faces)):
                     face_id_counter += 1
                     isFaceDetected, faceText = faceDetect(face, faceBox)
-                    current_face_positions[face_id_counter] = (faces[i], [isFaceDetected], faceText)
+                    current_face_positions[face_id_counter] = [faces[i], [isFaceDetected], faceText, time.time()]
 
-            print("Current", current_face_positions)
+        prev_face_positions = auditoryPrompt(current_face_positions, frame.shape)
 
-            # face = cv2.resize(face, (0, 0), fx=0.25, fy=0.25)
-
-            # rgb_face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-            # print(type(rgb_face), rgb_face.shape)
-
-            # face_locations = [
-            #    (0 + 2, rgb_face.shape[1] - 2, rgb_face.shape[0] - 2, 0 + 2)
-            # ]
-            # encoding_test_faces = face_recognition.face_encodings(rgb_face, face_locations)
-
-            # if (len(encoding_test_faces) > 0) :
-            #    encoding_test_face = encoding_test_faces[0]
-            #    print(type(encoding_test_face), encoding_test_face.shape)
-            #
-            #    match = face_recognition.compare_faces(known_faces, encoding_test_face)
-
-            #    if (match[0]) :
-            #        cv2.putText(result, f'Kristof', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-            #    else:
-            #        ageGender(face, faceBox)
-            # else:
-            #    ageGender(face, faceBox)
-        # For fps
         new_frame_time = time.time()
         fps = 1 / (new_frame_time - prev_frame_time)
         prev_frame_time = new_frame_time
         fps = str(round(fps, 2))
         cv2.putText(frame, fps, (7, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 1, cv2.LINE_AA)
-
-        prev_face_positions = current_face_positions
 
         cv2.imshow("preview", result)
 
