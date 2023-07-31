@@ -1,13 +1,13 @@
 import threading
 
+import numpy as np
 import cv2
 import face_recognition
 import time
 from pathlib import Path
 from pytesseract import *
 from difflib import SequenceMatcher
-import os.path
-from itertools import islice
+import os
 
 
 def faceRecognitionTest():
@@ -141,6 +141,7 @@ for p in Path('.').glob('face_images/*.jpg'):
 
 
 def ageGender(frame, face, faceBox, genderAgeData):
+    #print("AGE GENDER")
     new_gender_age_data = [0, 0, 0, 0]
 
     blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
@@ -188,6 +189,7 @@ def ageGender(frame, face, faceBox, genderAgeData):
 
 
 def faceRecognition(frame, face, faceBox, genderAgeData):
+    #print("FACE RECOGNITION")
     face_smaller = cv2.resize(face, (0, 0), fx=0.25, fy=0.25)
 
     rgb_face = cv2.cvtColor(face_smaller, cv2.COLOR_BGR2RGB)
@@ -199,12 +201,14 @@ def faceRecognition(frame, face, faceBox, genderAgeData):
 
     if len(encoding_test_faces) > 0:
         encoding_test_face = encoding_test_faces[0]
-        new_list = []
-        for element in known_faces:
-            if element is not []:
-                new_list.append(element)
 
-        match = face_recognition.compare_faces(new_list, encoding_test_face)
+        for i in range (0, len(known_faces)):
+            if known_faces[i].size == 0:
+                del known_faces[i]
+                del known_faces_names[i]
+                i -= 1
+
+        match = face_recognition.compare_faces(known_faces, encoding_test_face)
 
         for i in range(0, len(match)):
             if match[i]:
@@ -216,7 +220,8 @@ def faceRecognition(frame, face, faceBox, genderAgeData):
 
 
 def addNewEncoding(face_id):
-    known_faces.append([])
+    #print("ADD ENCODING")
+    known_faces.append(np.array([]))
     index = len(known_faces) - 1
     new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
     known_faces_names.append(str(face_id))
@@ -226,6 +231,7 @@ def addNewEncoding(face_id):
 
 
 def changeEncoding(face_id):
+    #print("CHANGE ENCODING")
     new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
     new_person_encoding = face_recognition.face_encodings(new_person_image)
     index = known_faces_names.index(str(face_id))
@@ -234,6 +240,7 @@ def changeEncoding(face_id):
 
 
 def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
+    #print("SAVE FACE IMAGE")
     for face_id, face_data in face_positions.items():
         face = frame[max(0, face_data[0][1] - 10): min(face_data[0][3] + 10, frame.shape[0] - 1), max(0, face_data[0][0] - 10): min(face_data[0][2] + 10, frame.shape[1] - 1)]
         if face_data[1][len(face_data[1])-1]:
@@ -245,34 +252,74 @@ def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
             thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
             thread1.start()
         elif time_at_end - face_data[3] > 0:
-            if prev_face_positions == {} or face_data[4][1] < 0.9 or face_id > len(prev_face_positions)-1:
+            if prev_face_positions == {} or face_data[4][1] < 0.9 or face_id not in prev_face_positions: #or face_id > len(prev_face_positions)-1:
                 continue
-            print("PREV FACE[face_id]:", prev_face_positions[face_id])
+            #print("PREV FACE[face_id]:", prev_face_positions[face_id])
             if prev_face_positions[face_id][4][1] != face_data[4][1]:
                 cv2.imwrite('face_images/'+str(face_id)+'.jpg', face)
                 thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
                 thread2 = threading.Thread(target=changeEncoding, args=(face_id,))
                 if str(face_id) not in known_faces_names:
-                    print("NEW FACE ADDED")
+                    #print("NEW FACE ADDED")
                     thread1.start()
                 else:
-                    print("CHANGED FACE ENCOD")
+                    #print("CHANGED FACE ENCOD")
                     thread2.start()
 
     return face_positions
 
 
 def auditoryPrompt(face_positions, frame_shape, time_at_end):
-    for face_id, face_box in face_positions.items():
-        if time_at_end - face_box[3] > 3:
-            if (face_box[0][0] / frame_shape[1] + face_box[0][2] / frame_shape[1]) / 2 < 0.35:
-                print(face_box[2] + " je na levi.")
-            elif (face_box[0][0] / frame_shape[1] + face_box[0][2] / frame_shape[1]) / 2 > 0.65:
-                print(face_box[2] + " je na desni.")
-            else:
-                print(face_box[2] + " je naravnost pred vami.")
+    #print("AUDITORY PROMPT")
+    for face_id, face_data in face_positions.items():
+        if face_data[0] is None:
+            continue
+        if time_at_end - face_data[3] > 3:
+            name_prompt = face_id
 
-            face_positions[face_id][3] = face_box[3] + 30
+            if face_data[5] > 0:
+                name_prompt = "Spet je tu "
+
+                if face_id.isdigit():
+                    gender = genderList[face_data[4][0]]
+                    age = ageList[face_data[4][2]]
+                    age = age[1:len(age) - 1]
+                    age = age.split("-")
+                    if gender == "Male":
+                        name_prompt += f"moški med {age[0]} in {age[1]} let"
+                    else:
+                        name_prompt += f"ženska med {age[0]} in {age[1]} let"
+
+                    if age[1] == "3":
+                        name_prompt += "a"
+
+                    name_prompt += " in"
+
+                else:
+                    name_prompt += face_id + " in"
+
+            elif face_id.isdigit():
+                gender = genderList[face_data[4][0]]
+                age = ageList[face_data[4][2]]
+                age = age[1:len(age) - 1]
+                age = age.split("-")
+                if gender == "Male":
+                    name_prompt = f"Moški med {age[0]} in {age[1]} let"
+                else:
+                    name_prompt = f"Ženska med {age[0]} in {age[1]} let"
+
+                if age[1] == "3":
+                    name_prompt += "a"
+
+            if (face_data[0][0] / frame_shape[1] + face_data[0][2] / frame_shape[1]) / 2 < 0.35:
+                print(name_prompt + " je na levi.")
+            elif (face_data[0][0] / frame_shape[1] + face_data[0][2] / frame_shape[1]) / 2 > 0.65:
+                print(name_prompt + " je na desni.")
+            else:
+                print(name_prompt + " je naravnost pred vami.")
+
+            face_positions[str(face_id)][5] += 1
+            face_positions[str(face_id)][3] = face_data[3] + 30
     return face_positions
 
 
@@ -281,14 +328,15 @@ def similar(a, b):
 
 
 def faceMain(frame_org, prev_face_positions, face_id_counter):
+    #print("FACE MAIN")
     frame = cv2.cvtColor(frame_org.copy(), cv2.COLOR_BGR2RGB)
-    current_face_positions = {} #DICT: faceBox, []array(length: 2) was face recognized in prev frames, text for display, time, array for max conf ageGender (gender index, gender max conf, age index, age max conf)
+    current_face_positions = {} #DICT: faceBox, []array(length: 2) was face recognized in prev frames, text for display, time, array for max conf ageGender (gender index, gender max conf, age index, age max conf), readout #times
 
     result, faces = detectFace(faceNeuralNet, frame.copy())
 
     # if not faces:
     # print("No face detected")
-    print("Prev: ", prev_face_positions)
+    #print("Prev: ", prev_face_positions)
 
     for faceBox in faces:
         face = frame[max(0, faceBox[1] - 10): min(faceBox[3] + 10, frame.shape[0] - 1), max(0, faceBox[0] - 10): min(faceBox[2] + 10, frame.shape[1] - 1)]
@@ -299,54 +347,73 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
         if len(prev_face_positions) > 0:
             found_matching_face = False
             for prev_id, prev_face_box in prev_face_positions.items():
-                overlap_area = calculate_overlap_area(faceBox, prev_face_box[0])
-
+                if prev_face_box[0] is not None:
+                    overlap_area = calculate_overlap_area(faceBox, prev_face_box[0])
+                else:
+                    overlap_area = 0
 
                 # cv2.imshow("face", face)
                 if overlap_area > 0.5:
                     if len(prev_face_box[1]) < 2:
                         frame, isFaceDetected, faceText, gender_age_data = faceRecognition(frame, face, faceBox, prev_face_box[4])
-                        if faceText.isdigit() and not prev_face_box[1][0]:
-                            current_face_positions[int(faceText)] = [faceBox, [prev_face_box[1][0], isFaceDetected], faceText, prev_face_box[3], gender_age_data]
+                        if isFaceDetected and not prev_face_box[1][0]:
+                            current_face_positions[faceText] = [faceBox, [prev_face_box[1][0], isFaceDetected], faceText, prev_face_box[3], gender_age_data, prev_face_box[5]]
                         else:
-                            current_face_positions[prev_id] = [faceBox, [prev_face_box[1][0], isFaceDetected], faceText, prev_face_box[3], gender_age_data]
+                            current_face_positions[str(prev_id)] = [faceBox, [prev_face_box[1][0], isFaceDetected], faceText, prev_face_box[3], gender_age_data, prev_face_box[5]]
                     else:
                         if not any(prev_face_box[1]):
                             frame, textAgeGender, gender_age_data = ageGender(frame, face, faceBox, prev_face_box[4])
-                            current_face_positions[prev_id] = [faceBox, prev_face_box[1], textAgeGender, prev_face_box[3], gender_age_data]
+                            current_face_positions[str(prev_id)] = [faceBox, prev_face_box[1], textAgeGender, prev_face_box[3], gender_age_data, prev_face_box[5]]
                         elif all(prev_face_box[1]):
                             cv2.putText(frame, prev_face_box[2], (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-                            current_face_positions[prev_id] = [faceBox, prev_face_box[1], prev_face_box[2], prev_face_box[3], prev_face_box[4]]
+                            current_face_positions[str(prev_id)] = [faceBox, prev_face_box[1], prev_face_box[2], prev_face_box[3], prev_face_box[4], prev_face_box[5]]
                         else:
                             frame, isFaceDetected, faceText, gender_age_data = faceRecognition(frame, face, faceBox, prev_face_box[4])
-                            if faceText.isdigit() and not prev_face_box[1][0]:
-                                current_face_positions[int(faceText)] = [faceBox, [prev_face_box[1][1], isFaceDetected], faceText, prev_face_box[3], gender_age_data]
+                            if isFaceDetected and not prev_face_box[1][0]:
+                                current_face_positions[faceText] = [faceBox, [prev_face_box[1][1], isFaceDetected], faceText, prev_face_box[3], gender_age_data, prev_face_box[5]]
                             else:
-                                current_face_positions[prev_id] = [faceBox, [prev_face_box[1][1], isFaceDetected], faceText, prev_face_box[3], gender_age_data]
+                                current_face_positions[str(prev_id)] = [faceBox, [prev_face_box[1][1], isFaceDetected], faceText, prev_face_box[3], gender_age_data, prev_face_box[5]]
                     found_matching_face = True
                     break
 
             if not found_matching_face:
                 frame, isFaceDetected, faceText, ageGenderData = faceRecognition(frame, face, faceBox, [0, 0, 0, 0])
-
-                if faceText.isdigit():
-                    current_face_positions[int(faceText)] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData]
+                shown_number_of_times = 0
+                if isFaceDetected:
+                    if faceText in prev_face_positions:
+                        ageGenderData = prev_face_positions[faceText][4]
+                        shown_number_of_times = prev_face_positions[faceText][5]
+                    current_face_positions[faceText] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData, shown_number_of_times]
                 else:
                     face_id_counter += 1
-                    current_face_positions[face_id_counter] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData]
+                    current_face_positions[str(face_id_counter)] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData, 0]
 
         else:
             frame, isFaceDetected, faceText, ageGenderData = faceRecognition(frame, face, faceBox, [0, 0, 0, 0])
-            if faceText.isdigit():
-                current_face_positions[int(faceText)] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData]
+            shown_number_of_times = 0
+            if isFaceDetected:
+                if faceText in prev_face_positions:
+                    ageGenderData = prev_face_positions[faceText][4]
+                    shown_number_of_times = prev_face_positions[faceText][5]
+                current_face_positions[faceText] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData, shown_number_of_times]
             else:
                 face_id_counter += 1
-                current_face_positions[face_id_counter] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData]
+                current_face_positions[str(face_id_counter)] = [faceBox, [isFaceDetected], faceText, time.time(), ageGenderData, 0]
 
     time_at_end = time.time()
     current_face_positions = saveFaceImage(frame_org, current_face_positions, time_at_end, prev_face_positions)
 
-    print("current:", current_face_positions)
+    #ADD lost faces back to dict
+    for prev_face, prev_face_data in prev_face_positions.items():
+        found_match = False
+        for current_face, current_face_data in current_face_positions.items():
+            if current_face == prev_face:
+                found_match = True
+        if not found_match:
+            current_face_positions[prev_face] = [None, prev_face_data[1], prev_face_data[2], prev_face_data[3], prev_face_data[4], prev_face_data[5]]
+
+
+    #print("current:", current_face_positions)
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), auditoryPrompt(current_face_positions, frame.shape, time_at_end), face_id_counter
 
 
@@ -408,6 +475,7 @@ def main():
     read_queue = []
 
     while rval:
+        #"NEW FRAME"
 
         frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
         #read_queue = textMain(frame, read_queue)
@@ -430,4 +498,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    finally:
+        for img in Path('.').glob('face_images/*.jpg'):
+            if img.name[0:len(img.name) - 4].isdigit():
+                os.remove('face_images/' + img.name)
+
