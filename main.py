@@ -8,7 +8,9 @@ from pathlib import Path
 from pytesseract import *
 from difflib import SequenceMatcher
 import os
-
+import pandas as pd
+import enchant
+import Levenshtein
 
 def faceRecognitionTest():
     cv2.namedWindow("preview")
@@ -110,6 +112,8 @@ def boxFace(frame, boxes, color):
         frame = cv2.rectangle(frame, (x, y), (x + width, y + height), color, 2)
         return frame"""
 
+slo_dict = enchant.Dict('sl_SI')
+
 configFace = "gad/opencv_face_detector.pbtxt"
 modelFace = "gad/opencv_face_detector_uint8.pb"
 faceNeuralNet = cv2.dnn.readNet(modelFace, configFace)
@@ -131,6 +135,8 @@ genderList = ['Male', 'Female']
 
 known_faces = []
 known_faces_names = []
+
+isTextDetectionOK = True
 
 for p in Path('.').glob('face_images/*.jpg'):
     person_image = face_recognition.load_image_file("face_images/" + p.name)
@@ -323,10 +329,6 @@ def auditoryPrompt(face_positions, frame_shape, time_at_end):
     return face_positions
 
 
-def similar(a, b):
-    return SequenceMatcher(None, a, b).ratio()
-
-
 def faceMain(frame_org, prev_face_positions, face_id_counter):
     #print("FACE MAIN")
     frame = cv2.cvtColor(frame_org.copy(), cv2.COLOR_BGR2RGB)
@@ -417,6 +419,116 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), auditoryPrompt(current_face_positions, frame.shape, time_at_end), face_id_counter
 
 
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def detectBlur(frame, size=60, thresh=10):
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    (height, width) = gray.shape
+    (centerX, centerY) = (int(width / 2.0), int(height / 2.0))
+
+    fft = np.fft.fft2(gray)
+    fftShift = np.fft.fftshift(fft)
+
+    fftShift[centerY - size:centerY + size, centerX - size:centerX + size] = 0
+    fftShift = np.fft.ifftshift(fftShift)
+    recon = np.fft.ifft2(fftShift)
+
+    magnitude = 20 * np.log(np.abs(recon))
+    mean = np.mean(magnitude)
+
+    return (mean, mean <= thresh)
+
+
+def combine_lists_with_overlap(previous_frame, current_frame):
+    global isTextDetectionOK
+    prev_index_3overlap = []
+    current_index_3overlap = []
+    for i, prev_word in enumerate(previous_frame):
+        for j, current_word in enumerate(current_frame):
+            if previous_frame[i][0] == current_frame[j][0]:
+                #Check 2 more words
+                if i+2 < len(previous_frame) and j+2 < len(current_frame):
+                    if previous_frame[i+1][0] == current_frame[j+1][0] and previous_frame[i+2][0] == current_frame[j+2][0]:
+                        prev_index_3overlap.append(i)
+                        current_index_3overlap.append(j)
+                        break
+                else:
+                    continue
+
+    if len(prev_index_3overlap) < 1:
+        if not isTextDetectionOK:
+            return []
+        isTextDetectionOK = False
+        return previous_frame
+    else:
+        isTextDetectionOK = True
+
+    #print(prev_index_3overlap)
+    #print(current_index_3overlap)
+    #For every found overlap add to combined, if gaps fill in
+
+    combined = []
+
+
+    for i in range (0, prev_index_3overlap[0]):
+        #print("DODDAJ NA ZAČETKU IZ PREJŠNJEGA")
+        combined.append(previous_frame[i])
+
+    for i in range(0, len(prev_index_3overlap)):
+        combined.append(current_frame[current_index_3overlap[i]])
+        if i+1 < len(prev_index_3overlap):
+            if prev_index_3overlap[i+1] - prev_index_3overlap[i] == current_index_3overlap[i+1] - current_index_3overlap[i] and prev_index_3overlap[i+1] - prev_index_3overlap[i] > 1:
+                diff = prev_index_3overlap[i+1] - prev_index_3overlap[i]
+                for j in range(1, diff):
+                    if previous_frame[prev_index_3overlap[i]+j][1] > current_frame[current_index_3overlap[i]+j][1]:
+                        combined.append(previous_frame[prev_index_3overlap[i]+j])
+                    else:
+                        combined.append(current_frame[current_index_3overlap[i]+j])
+            elif prev_index_3overlap[i+1] - prev_index_3overlap[i] > current_index_3overlap[i+1] - current_index_3overlap[i] and prev_index_3overlap[i+1] - prev_index_3overlap[i] > 1:
+                diff = prev_index_3overlap[i+1] - prev_index_3overlap[i]
+                for j in range(1, diff):
+                    combined.append(previous_frame[prev_index_3overlap[i]+j])
+            elif prev_index_3overlap[i+1] - prev_index_3overlap[i] < current_index_3overlap[i+1] - current_index_3overlap[i] and current_index_3overlap[i+1] - current_index_3overlap[i] > 1:
+                diff = current_index_3overlap[i+1] - current_index_3overlap[i]
+                for j in range(1, diff):
+                    combined.append(current_frame[current_index_3overlap[i]+j])
+
+    #print(len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1], "PRIMERJAMO Z", len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1])
+    if len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] == len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
+        #print("NA KONCU MEŠANO")
+        diff = len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1]
+        for j in range(1, diff):
+            if previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j][1] > current_frame[current_index_3overlap[len(current_index_3overlap)-1] + j][1]:
+                combined.append(previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j])
+            else:
+                combined.append(current_frame[current_index_3overlap[len(current_index_3overlap)-1] + j])
+    elif len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] > len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
+        #print("NA KONCU IZ PREVIOUS")
+        diff = len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1]
+        for j in range(1, diff):
+            combined.append(previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j])
+    elif len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] < len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
+        #print("NA KONCU IZ CURRENT")
+        diff = len(current_frame) - current_index_3overlap[len(current_index_3overlap) - 1]
+        if current_index_3overlap[0] - current_index_3overlap[len(current_index_3overlap)-1] > 0:
+            #print("ZAZNANO PONAVLJANJE")
+            diff = current_index_3overlap[0] - current_index_3overlap[len(current_index_3overlap)-1]
+        for j in range(1, diff):
+            combined.append(current_frame[current_index_3overlap[len(current_index_3overlap)-1] + j])
+
+    if current_index_3overlap[0] > 4:
+        if current_index_3overlap[0] < current_index_3overlap[len(current_index_3overlap) - 1]:
+            #print("DODAJ NA KONEC IZ ZAČETKA ZDAJŠNJEGA")
+            for i in range(0, current_index_3overlap[0]):
+                combined.append(current_frame[i])
+
+    #print("COMBINED:", combined)
+    return combined
+
+
 def textMain(frame, read_queue):
     print("================================")
     pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
@@ -427,31 +539,74 @@ def textMain(frame, read_queue):
     #frame = cv2.GaussianBlur(frame, (5, 5), 1)
     #frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
 
-    text_res = pytesseract.image_to_data(frame, lang='slv', output_type=Output.DICT)
+    text_res = pytesseract.image_to_data(frame, lang='slv', output_type='data.frame')
+    text_res = text_res[text_res.conf >= 80]
+    filtered_rows = []
+    for index, row in text_res.iterrows():
+        word = row['text']
+        if not isinstance(word, str):
+            continue
+        if word.strip() == '':
+            continue
+        word_without_symbol = ''.join(letter for letter in word if letter.isalnum())
+        if word_without_symbol.strip() == '':
+            continue
+        if slo_dict.check(word_without_symbol):
+            filtered_rows.append(row)
 
-    for i in range(0, len(text_res["text"])):
-        x = text_res["left"][i]
-        y = text_res["top"][i]
-        w = text_res["width"][i]
-        h = text_res["height"][i]
+    # Create a new DataFrame containing the filtered rows
+    text_res = pd.DataFrame(filtered_rows)
+    #print(text_res)
+    lines = []
+    time_lines = time.time()
+    for index, row in text_res.iterrows():
+        word = row['text']
+        conf = row['conf']
+        lines.append((word, conf, time_lines))
+    #lines = text_res.groupby('block_num')['text'].apply(list)
+    #conf_lines = text_res.groupby('block_num')['conf'].mean()
+    #for i in range(0, len(lines)):
+        #print(lines[i], conf_lines[i])
+    #print(lines)
+    #for i in range(0, len(text_res["text"])):
+    #    x = text_res["left"][i]
+    #    y = text_res["top"][i]
+    #    w = text_res["width"][i]
+    #    h = text_res["height"][i]
 
-        text = text_res["text"][i]
-        conf = int(text_res["conf"][i])
+    #    text = text_res["text"][i]
+    #    conf = int(text_res["conf"][i])
 
-        if conf > 0.75:
-            print("Confidence: {}".format(conf))
-            print("Text: {}".format(text))
+    #    if conf > 0.90:
+    #        print("Confidence: {}".format(conf))
+    #        print("Text: {}".format(text))
 
             # We then strip out non-ASCII text so we can
             # draw the text on the image We will be using
             # OpenCV, then draw a bounding box around the
             # text along with the text itself
-            text = "".join(text).strip()
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 1)
-            cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 1)
+    #        text = "".join(text).strip()
+    #        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 1)
+    #        cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1)
+    #print("LINES:", lines)
+    #print("READ QUEUE", read_queue)
+    if lines == []:
+        return frame, read_queue
 
-    cv2.imshow("preview", frame)
-    return read_queue
+    if read_queue == []:
+        read_queue = lines
+    else:
+        read_queue = combine_lists_with_overlap(read_queue, lines)
+
+    combined_string = ""
+    for item in read_queue:
+        combined_string += item[0]
+
+    # Using list comprehension
+    combined_string = ' '.join([item[0] for item in read_queue])
+    print(combined_string)
+
+    return frame, read_queue
 
 
 def main():
@@ -476,9 +631,14 @@ def main():
 
     while rval:
         #"NEW FRAME"
+        (mean, blurry) = detectBlur(frame)
+        color = (0, 0, 255) if blurry else (0, 255, 0)
+        textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
+        textBlur = textBlur.format(mean)
 
-        frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
-        #read_queue = textMain(frame, read_queue)
+        if not blurry:
+            frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
+            #frame, read_queue = textMain(frame, read_queue)
 
         new_frame_time = time.time()
         fps = 1 / (new_frame_time - prev_frame_time)
@@ -486,6 +646,7 @@ def main():
         fps = str(round(fps, 2))
         cv2.putText(frame, fps, (7, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 1, cv2.LINE_AA)
 
+        cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
         cv2.imshow("preview", frame)
 
         rval, frame = vc.read()
