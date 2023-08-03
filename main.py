@@ -9,7 +9,9 @@ from pytesseract import *
 from difflib import SequenceMatcher
 import os
 import pandas as pd
+import tkinter as tk
 import enchant
+from PIL import Image, ImageTk
 import Levenshtein
 
 def faceRecognitionTest():
@@ -540,7 +542,7 @@ def textMain(frame, read_queue):
     #frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
 
     text_res = pytesseract.image_to_data(frame, lang='slv', output_type='data.frame')
-    text_res = text_res[text_res.conf >= 80]
+    text_res = text_res[text_res.conf >= 85]
     filtered_rows = []
     for index, row in text_res.iterrows():
         word = row['text']
@@ -606,55 +608,74 @@ def textMain(frame, read_queue):
     combined_string = ' '.join([item[0] for item in read_queue])
     print(combined_string)
 
-    return frame, read_queue
+    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), read_queue
 
 
 def main():
-    cv2.namedWindow("preview")
-    vc = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    use_face_or_text_main = True
+    def update_frame(prev_frame_time, prev_face_positions, face_id_counter, read_queue):
+        nonlocal use_face_or_text_main
+        rval, frame = vc.read()
+        if rval:
+            (mean, blurry) = detectBlur(frame)
+            color = (0, 0, 255) if blurry else (0, 255, 0)
+            textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
+            textBlur = textBlur.format(mean)
 
+            if not blurry:
+                if use_face_or_text_main:
+                    frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
+                else:
+                    frame, read_queue = textMain(frame, read_queue)
+
+            new_frame_time = time.time()
+            fps = 1 / (new_frame_time - prev_frame_time)
+            prev_frame_time = new_frame_time
+            fps = str(round(fps, 2))
+            cv2.putText(frame, fps, (7, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 1, cv2.LINE_AA)
+
+            cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
+
+            # Display the frame in Tkinter window
+            imgtk = ImageTk.PhotoImage(image=Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+            lmain.imgtk = imgtk
+            lmain.configure(image=imgtk)
+
+        window.after(10, update_frame, prev_frame_time, prev_face_positions, face_id_counter, read_queue)  # Update every 10 milliseconds
+
+    def toggle_functionality():
+        nonlocal use_face_or_text_main
+        use_face_or_text_main = not use_face_or_text_main
+
+    vc = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     vc.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     vc.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
-    prev_frame_time = 0
-    new_frame_time = 0
 
     if vc.isOpened():  # try to get the first frame
         rval, frame = vc.read()
     else:
         rval = False
 
-    face_id_counter = 0
-    prev_face_positions = {}
+    window = tk.Tk()  # Makes main window
+    window.wm_title("Digital Microscope")
+    window.config(background="#FFFFFF")
 
-    read_queue = []
+    use_face_or_text_main = True
+    toggle_button = tk.Button(window, text="Toggle functionality", command=toggle_functionality)
+    toggle_button.grid(row=1, column=0, padx=10, pady=2)
 
-    while rval:
-        #"NEW FRAME"
-        (mean, blurry) = detectBlur(frame)
-        color = (0, 0, 255) if blurry else (0, 255, 0)
-        textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
-        textBlur = textBlur.format(mean)
+    # Graphics window
+    imageFrame = tk.Frame(window, width=1280, height=720)
+    imageFrame.grid(row=0, column=0, padx=10, pady=2)
 
-        if not blurry:
-            frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
-            #frame, read_queue = textMain(frame, read_queue)
+    lmain = tk.Label(imageFrame)
+    lmain.grid(row=0, column=0)
 
-        new_frame_time = time.time()
-        fps = 1 / (new_frame_time - prev_frame_time)
-        prev_frame_time = new_frame_time
-        fps = str(round(fps, 2))
-        cv2.putText(frame, fps, (7, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 1, cv2.LINE_AA)
+    update_frame(0, {}, 0, [])  # Start the periodic frame update
 
-        cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
-        cv2.imshow("preview", frame)
+    window.mainloop()
 
-        rval, frame = vc.read()
-        key = cv2.waitKey(20)
-        if key == 27:  # exit on ESC
-            break
-
-    cv2.destroyWindow("preview")
+    cv2.destroyAllWindows()
     vc.release()
 
 
