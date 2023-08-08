@@ -404,6 +404,8 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
 
     for faceBox in faces:
         face = frame[max(0, faceBox[1] - 10): min(faceBox[3] + 10, frame.shape[0] - 1), max(0, faceBox[0] - 10): min(faceBox[2] + 10, frame.shape[1] - 1)]
+        if faceBox[0] + face.shape[1] > frame.shape[1] or faceBox[0] < 0 or faceBox[1] <= 0 or faceBox[1] + face.shape[0] > frame.shape[0]:
+            continue
         if face.shape[0] < 1 or face.shape[1] < 1:
             continue
 
@@ -701,7 +703,7 @@ def detectTextArea(frame):
 
     # set the new width and height and then determine the ratio in change
     # for both the width and height
-    (newW, newH) = (320, 320)
+    (newW, newH) = (480, 480)
     rW = W / float(newW)
     rH = H / float(newH)
     # resize the image and grab the new image dimensions
@@ -753,16 +755,26 @@ def detectTextArea(frame):
     boxes = non_max_suppression(np.array(rects), probs=confidences)
     min_x, min_y, max_x, max_y = float('inf'), float('inf'), float('-inf'), float('-inf')
 
+    num_word_in_middle = 0
+    text_block_on_left_and_right = False
     for box in boxes:
         x, y, x_end, y_end = box
+        # print("x, x_end", x, x_end, (x+x_end)/2)
+        # print("newW", newW)
+        if (x+x_end) / 2 > newW * 0.35 and (x+x_end) / 2 < newW * 0.65:
+            num_word_in_middle += 1
         min_x = min(min_x, x * rW)
         min_y = min(min_y, y * rH)
         max_x = max(max_x, x_end * rW)
         max_y = max(max_y, y_end * rH)
+        cv2.rectangle(orig, (int(x * rW), int(y * rH)), (int(x_end * rW), int(y_end * rH)), (0, 255, 0), 1)
 
+    if len(boxes) > 2:
+        if num_word_in_middle/len(boxes) < 0.05:
+            text_block_on_left_and_right = True
     (frame_H, frame_W) = frame.shape[:2]
     if min_x == float('inf') or min_y == float('inf') or max_x == float('inf') or max_y == float('inf'):
-        return orig, (0, 0, frame_W-1, frame_H-1)
+        return orig, (0, 0, frame_W-1, frame_H-1), False
     min_x = int(min_x)
     min_y = int(min_y)
     max_x = int(max_x)
@@ -776,7 +788,7 @@ def detectTextArea(frame):
 
     # Draw the final bounding box on the original image
     cv2.rectangle(orig, (min_x, min_y), (max_x, max_y), (0, 255, 0), 2)
-    return orig, (min_x, min_y, max_x, max_y)
+    return orig, (min_x, min_y, max_x, max_y), text_block_on_left_and_right
 
 
 def main():
@@ -821,30 +833,37 @@ def main():
                     if new_thread:
                         previous_thread = new_thread
             else:
-                frame, (min_x, min_y, max_x, max_y) = detectTextArea(frame)
+                frame, (min_x, min_y, max_x, max_y), text_block_on_left_and_right = detectTextArea(frame)
                 # print(min_x, min_y, max_x, max_y, frame.shape)
-
-                if min_x < 10 and frame.shape[1] - max_x < 10:
+                if min_x < 10 and frame.shape[1] - max_x < 10 and text_block_on_left_and_right:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print(' Cel tekst ni v objektivu, postavite se drugače!')
-                        new_thread = threading.Thread(target=speech, args=('Cel tekst ni v objektivu, postavite se drugače!',))
+                        print(' Celo besedilo ni v objektivu, poglejte levo ali desno!')
+                        new_thread = threading.Thread(target=speech, args=('Celo besedilo ni v objektivu, poglejte levo ali desno!',))
+                        new_thread.start()
+                    if new_thread:
+                        previous_thread = new_thread
+                elif min_x < 10 and frame.shape[1] - max_x < 10:
+                    new_thread = None
+                    if not previous_thread or not previous_thread.is_alive():
+                        print(' Celo besedilo ni v objektivu, stopite nazaj!')
+                        new_thread = threading.Thread(target=speech, args=('Celo besedilo ni v objektivu, stopite nazaj!',))
                         new_thread.start()
                     if new_thread:
                         previous_thread = new_thread
                 elif min_x < 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print(' Poglejte malo bolj levo, ker je tekst na robu!')
-                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj levo, ker je tekst na robu!',))
+                        print(' Poglejte malo bolj levo, ker je besedilo na robu!')
+                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj levo, ker je besedilo na robu!',))
                         new_thread.start()
                     if new_thread:
                         previous_thread = new_thread
                 elif frame.shape[1] - max_x < 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print(' Poglejte malo bolj desno, ker je tekst na robu!')
-                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj desno, ker je tekst na robu!',))
+                        print(' Poglejte malo bolj desno, ker je besedilo na robu!')
+                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj desno, ker je besedilo na robu!',))
                         new_thread.start()
                     if new_thread:
                         previous_thread = new_thread
@@ -888,7 +907,7 @@ def main():
         nonlocal toggle_button
         use_face_or_text_main = not use_face_or_text_main
         if use_face_or_text_main:
-            toggle_button.config(text='Spremeni na zaznavo teksta')
+            toggle_button.config(text='Spremeni na zaznavo besedila')
         else:
             toggle_button.config(text='Spremeni na zaznavo obrazov')
 
@@ -903,7 +922,7 @@ def main():
     window.config(background="#FFFFFF")
 
     use_face_or_text_main = True
-    toggle_button = tk.Button(window, text='Spremeni na zaznavo teksta', command=toggle_functionality)
+    toggle_button = tk.Button(window, text='Spremeni na zaznavo besedila', command=toggle_functionality)
     toggle_button.grid(row=1, column=0, padx=10, pady=2)
 
     # Graphics window
