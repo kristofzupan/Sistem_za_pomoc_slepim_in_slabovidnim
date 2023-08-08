@@ -367,13 +367,14 @@ def auditoryPrompt(face_positions, frame_shape, time_at_end):
             else:
                 name_prompt = name_prompt + " je naravnost pred vami."
 
-            print("before speech:", name_prompt)
+            # print("before speech:", name_prompt)
             if previous_thread and previous_thread.is_alive():
                 face_positions[str(face_id)][3] = face_data[3] + 1
             else:
                 face_positions[str(face_id)][5] += 1
                 face_positions[str(face_id)][3] = face_data[3] + 45
 
+            print(name_prompt)
             new_thread = None
             if not previous_thread or not previous_thread.is_alive():
                 new_thread = threading.Thread(target=speech, args=(name_prompt,))
@@ -381,7 +382,7 @@ def auditoryPrompt(face_positions, frame_shape, time_at_end):
 
             if new_thread:
                 previous_thread = new_thread
-            print("after speech:", name_prompt)
+            # print("after speech:", name_prompt)
 
     if all_faces_none:
         num_no_faces += 1
@@ -476,7 +477,7 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
             current_face_positions[prev_face] = [None, prev_face_data[1], prev_face_data[2], prev_face_data[3], prev_face_data[4], prev_face_data[5]]
 
 
-    print("current:", current_face_positions)
+    # print("current:", current_face_positions)
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), auditoryPrompt(current_face_positions, frame.shape, time_at_end), face_id_counter
 
 
@@ -527,15 +528,15 @@ def combine_lists_with_overlap(previous_frame, current_frame):
     else:
         isTextDetectionOK = True
 
-    print(prev_index_3overlap)
-    print(current_index_3overlap)
+    # print(prev_index_3overlap)
+    # print(current_index_3overlap)
     # For every found overlap add to combined, if gaps fill in
 
     combined = []
 
 
     for i in range (0, prev_index_3overlap[0]):
-        print("DODDAJ NA ZAČETKU IZ PREJŠNJEGA")
+        # print("DODDAJ NA ZAČETKU IZ PREJŠNJEGA")
         combined.append(previous_frame[i])
 
     for i in range(0, len(prev_index_3overlap)):
@@ -567,7 +568,7 @@ def combine_lists_with_overlap(previous_frame, current_frame):
 
     # print(len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1], "PRIMERJAMO Z", len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1])
     if len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] == len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
-        print("NA KONCU MEŠANO")
+        # print("NA KONCU MEŠANO")
         diff = len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1]
         for j in range(1, diff):
             if previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j][1] > current_frame[current_index_3overlap[len(current_index_3overlap)-1] + j][1]:
@@ -577,34 +578,34 @@ def combine_lists_with_overlap(previous_frame, current_frame):
             if previous_frame[prev_index_3overlap[len(prev_index_3overlap) - 1] + j][2] == float('inf'):  # TIME
                 combined[len(combined) - 1][2] = float('inf')
     elif len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] > len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
-        print("NA KONCU IZ PREVIOUS")
+        # print("NA KONCU IZ PREVIOUS")
         diff = len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1]
         for j in range(1, diff):
             combined.append(previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j])
             if previous_frame[prev_index_3overlap[len(prev_index_3overlap)-1] + j][2] == float('inf'):
                 combined[len(combined) - 1][2] = float('inf')
     elif len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] < len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
-        print("NA KONCU IZ CURRENT")
+        # print("NA KONCU IZ CURRENT")
         diff = len(current_frame) - current_index_3overlap[len(current_index_3overlap) - 1]
         if current_index_3overlap[0] - current_index_3overlap[len(current_index_3overlap)-1] > 0:
-            print("ZAZNANO PONAVLJANJE")
+            # print("ZAZNANO PONAVLJANJE")
             diff = current_index_3overlap[0] - current_index_3overlap[len(current_index_3overlap)-1]
         for j in range(1, diff):
             combined.append(current_frame[current_index_3overlap[len(current_index_3overlap)-1] + j])
 
     if current_index_3overlap[0] > 4:
         if current_index_3overlap[0] < current_index_3overlap[len(current_index_3overlap) - 1]:
-            print("DODAJ NA KONEC IZ ZAČETKA ZDAJŠNJEGA")
+            # print("DODAJ NA KONEC IZ ZAČETKA ZDAJŠNJEGA")
             for i in range(0, current_index_3overlap[0]):
                 combined.append(current_frame[i])
 
-    print("COMBINED:", combined)
+    # print("COMBINED:", combined)
     return combined
 
 
 def textMain(frame, read_queue):
     global previous_thread
-    print("================================")
+    # print("================================")
     pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -641,8 +642,8 @@ def textMain(frame, read_queue):
         conf = row['conf']
         lines.append([word, conf, time_lines])
 
-    print("LINES:", lines)
-    print("READ QUEUE", read_queue)
+    # print("LINES:", lines)
+    # print("READ QUEUE", read_queue)
     if lines == []:
         return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), read_queue
 
@@ -658,14 +659,14 @@ def textMain(frame, read_queue):
     # Using list comprehension
     # combined_string = ' '.join([item[0] for item in read_queue])
 
-    print("before speech:", len(read_queue))
+    # print("before speech:", len(read_queue))
     # asyncio.run(speech(name_prompt))
 
     new_thread = None
     if not previous_thread or not previous_thread.is_alive():
         num_word = 0
         prompt = ''
-        print(read_queue)
+        # print(read_queue)
         for i in range(0, len(read_queue)):
             # print(read_queue[i][2])
             if read_queue[i][2] == float('inf'):
@@ -679,14 +680,14 @@ def textMain(frame, read_queue):
                 break
             if num_word > 25:
                 break
-        print(read_queue)
+        # print(read_queue)
         print(prompt)
         new_thread = threading.Thread(target=speech, args=(prompt,))
         new_thread.start()
 
     if new_thread:
         previous_thread = new_thread
-    print("after speech:")
+    # print("after speech:")
 
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), read_queue
 
@@ -803,10 +804,10 @@ def main():
 
                 if num_blurry == 0:
                     frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
-                    if num_no_faces == 30:
+                    if num_no_faces == 20:
                         new_thread = None
                         if not previous_thread or not previous_thread.is_alive():
-                            print('Pred vami ni zaznanih oseb!')
+                            print(' Pred vami ni zaznanih oseb!')
                             new_thread = threading.Thread(target=speech, args=('Pred vami ni zaznanih oseb!',))
                             new_thread.start()
                         if new_thread:
@@ -814,19 +815,19 @@ def main():
                 elif num_blurry == 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print('Slika je zamegljena, stojte pri miru!')
+                        print(' Slika je zamegljena, stojte pri miru!')
                         new_thread = threading.Thread(target=speech, args=('Slika je zamegljena, stojte pri miru!',))
                         new_thread.start()
                     if new_thread:
                         previous_thread = new_thread
             else:
                 frame, (min_x, min_y, max_x, max_y) = detectTextArea(frame)
-                print(min_x, min_y, max_x, max_y, frame.shape)
+                # print(min_x, min_y, max_x, max_y, frame.shape)
 
                 if min_x < 10 and frame.shape[1] - max_x < 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print('Cel tekst ni v objektivu, postavite se drugače!')
+                        print(' Cel tekst ni v objektivu, postavite se drugače!')
                         new_thread = threading.Thread(target=speech, args=('Cel tekst ni v objektivu, postavite se drugače!',))
                         new_thread.start()
                     if new_thread:
@@ -834,7 +835,7 @@ def main():
                 elif min_x < 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print('Poglejte malo bolj levo, ker je tekst na robu!')
+                        print(' Poglejte malo bolj levo, ker je tekst na robu!')
                         new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj levo, ker je tekst na robu!',))
                         new_thread.start()
                     if new_thread:
@@ -842,7 +843,7 @@ def main():
                 elif frame.shape[1] - max_x < 10:
                     new_thread = None
                     if not previous_thread or not previous_thread.is_alive():
-                        print('Poglejte malo bolj desno, ker je tekst na robu!')
+                        print(' Poglejte malo bolj desno, ker je tekst na robu!')
                         new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj desno, ker je tekst na robu!',))
                         new_thread.start()
                     if new_thread:
@@ -920,10 +921,10 @@ def main():
 
 
 def speech(text):
-    print("speech start")
+    # print("speech start")
     engine.say(text)
     engine.runAndWait()
-    print("speech end")
+    # print("speech end")
 
 
 if __name__ == '__main__':
