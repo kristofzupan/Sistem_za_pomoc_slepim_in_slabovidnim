@@ -14,7 +14,6 @@ import pandas as pd
 import tkinter as tk
 import enchant
 from PIL import Image, ImageTk
-import asyncio
 import pyttsx3
 from imutils.object_detection import non_max_suppression
 
@@ -136,13 +135,14 @@ MODEL_MEAN_VALUES = (78.4263377603, 87.7689143744, 114.895847746)
 ageList = ['(0-3)', '(4-7)', '(8-13)', '(14-22)', '(23-34)', '(35-45)', '(46-59)', '(60-100)']
 genderList = ['Male', 'Female']
 
-#person_image = face_recognition.load_image_file("face_images/Kristof.jpg")
-#person_encoding = face_recognition.face_encodings(person_image)[0]
+# person_image = face_recognition.load_image_file("face_images/Kristof.jpg")
+# person_encoding = face_recognition.face_encodings(person_image)[0]
 
 known_faces = []
 known_faces_names = []
 
 isTextDetectionOK = True
+num_no_faces = 0
 
 engine = pyttsx3.init(driverName='sapi5')
 voices = engine.getProperty('voices')
@@ -161,7 +161,7 @@ for p in Path('.').glob('face_images/*.jpg'):
 
 
 def ageGender(frame, face, faceBox, genderAgeData):
-    #print("AGE GENDER")
+    # print("AGE GENDER")
     new_gender_age_data = [0, 0, 0, 0]
 
     blob = cv2.dnn.blobFromImage(face, 1.0, (227, 227), MODEL_MEAN_VALUES, swapRB=False)
@@ -209,7 +209,7 @@ def ageGender(frame, face, faceBox, genderAgeData):
 
 
 def faceRecognition(frame, face, faceBox, genderAgeData):
-    #print("FACE RECOGNITION")
+    # print("FACE RECOGNITION")
     face_smaller = cv2.resize(face, (0, 0), fx=0.25, fy=0.25)
 
     rgb_face = cv2.cvtColor(face_smaller, cv2.COLOR_BGR2RGB)
@@ -242,7 +242,7 @@ def faceRecognition(frame, face, faceBox, genderAgeData):
 
 
 def addNewEncoding(face_id):
-    #print("ADD ENCODING")
+    # print("ADD ENCODING")
     known_faces.append(np.array([]))
     index = len(known_faces) - 1
     new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
@@ -253,7 +253,7 @@ def addNewEncoding(face_id):
 
 
 def changeEncoding(face_id):
-    #print("CHANGE ENCODING")
+    # print("CHANGE ENCODING")
     new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
     new_person_encoding = face_recognition.face_encodings(new_person_image)
     index = known_faces_names.index(str(face_id))
@@ -262,17 +262,17 @@ def changeEncoding(face_id):
 
 
 def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
-    #print("SAVE FACE IMAGE")
+    # print("SAVE FACE IMAGE")
     for face_id, face_data in face_positions.items():
         face = frame[max(0, face_data[0][1] - 10): min(face_data[0][3] + 10, frame.shape[0] - 1), max(0, face_data[0][0] - 10): min(face_data[0][2] + 10, frame.shape[1] - 1)]
         if face_data[1][len(face_data[1])-1]:
             continue
-        if time_at_end - face_data[3] > 3:
+        if time_at_end - face_data[3] > 4:
             if os.path.exists('face_images/' + str(face_id) + '.jpg'):
                 continue
             cv2.imwrite('face_images/'+str(face_id)+'.jpg', face)
-            #thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
-            #thread1.start()
+            # thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
+            # thread1.start()
             known_faces.append(np.array([]))
             index = len(known_faces) - 1
             new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
@@ -281,17 +281,17 @@ def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
             if len(new_person_encoding) > 0:
                 known_faces[index] = new_person_encoding[0]
 
-        elif time_at_end - face_data[3] > 0:
+        elif time_at_end - face_data[3] > 1.5:
             if prev_face_positions == {} or face_data[4][1] < 0.9 or face_id not in prev_face_positions: #or face_id > len(prev_face_positions)-1:
                 continue
-            #print("PREV FACE[face_id]:", prev_face_positions[face_id])
+            # print("PREV FACE[face_id]:", prev_face_positions[face_id])
             if prev_face_positions[face_id][4][1] != face_data[4][1]:
                 cv2.imwrite('face_images/'+str(face_id)+'.jpg', face)
-                #thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
-                #thread2 = threading.Thread(target=changeEncoding, args=(face_id,))
+                # thread1 = threading.Thread(target=addNewEncoding, args=(face_id,))
+                # thread2 = threading.Thread(target=changeEncoding, args=(face_id,))
                 if str(face_id) not in known_faces_names:
-                    #print("NEW FACE ADDED")
-                    #thread1.start()
+                    # print("NEW FACE ADDED")
+                    # thread1.start()
 
                     known_faces.append(np.array([]))
                     index = len(known_faces) - 1
@@ -301,8 +301,8 @@ def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
                     if len(new_person_encoding) > 0:
                         known_faces[index] = new_person_encoding[0]
                 else:
-                    #print("CHANGED FACE ENCOD")
-                    #thread2.start()
+                    # print("CHANGED FACE ENCOD")
+                    # thread2.start()
                     new_person_image = face_recognition.load_image_file("face_images/" + str(face_id) + ".jpg")
                     new_person_encoding = face_recognition.face_encodings(new_person_image)
                     index = known_faces_names.index(str(face_id))
@@ -315,12 +315,15 @@ def saveFaceImage(frame, face_positions, time_at_end, prev_face_positions):
 previous_thread = None
 
 def auditoryPrompt(face_positions, frame_shape, time_at_end):
-    #print("AUDITORY PROMPT")
+    # print("AUDITORY PROMPT")
     global previous_thread
+    global num_no_faces
+    all_faces_none = True
     for face_id, face_data in face_positions.items():
         if face_data[0] is None:
             continue
-        if time_at_end - face_data[3] > 3:
+        all_faces_none = False
+        if time_at_end - face_data[3] > 4:
             name_prompt = face_id
 
             if face_data[5] > 0:
@@ -365,7 +368,6 @@ def auditoryPrompt(face_positions, frame_shape, time_at_end):
                 name_prompt = name_prompt + " je naravnost pred vami."
 
             print("before speech:", name_prompt)
-            #asyncio.run(speech(name_prompt))
             if previous_thread and previous_thread.is_alive():
                 face_positions[str(face_id)][3] = face_data[3] + 1
             else:
@@ -380,28 +382,31 @@ def auditoryPrompt(face_positions, frame_shape, time_at_end):
             if new_thread:
                 previous_thread = new_thread
             print("after speech:", name_prompt)
-            #speech(name_prompt)
 
+    if all_faces_none:
+        num_no_faces += 1
+    else:
+        num_no_faces = 0
     return face_positions
 
 
 def faceMain(frame_org, prev_face_positions, face_id_counter):
-    #print("FACE MAIN")
+    # print("FACE MAIN")
     frame = cv2.cvtColor(frame_org.copy(), cv2.COLOR_BGR2RGB)
-    current_face_positions = {} #DICT: faceBox, []array(length: 2) was face recognized in prev frames, text for display, time, array for max conf ageGender (gender index, gender max conf, age index, age max conf), readout #times
+    current_face_positions = {}  # DICT: faceBox, []array(length: 2) was face recognized in prev frames, text for display, time, array for max conf ageGender (gender index, gender max conf, age index, age max conf), readout #times
 
     result, faces = detectFace(faceNeuralNet, frame.copy())
 
     # if not faces:
     # print("No face detected")
-    #print("Prev: ", prev_face_positions)
+    # print("Prev: ", prev_face_positions)
 
     for faceBox in faces:
         face = frame[max(0, faceBox[1] - 10): min(faceBox[3] + 10, frame.shape[0] - 1), max(0, faceBox[0] - 10): min(faceBox[2] + 10, frame.shape[1] - 1)]
         if face.shape[0] < 1 or face.shape[1] < 1:
             continue
 
-        #print(face.shape)
+        # print(face.shape)
         if len(prev_face_positions) > 0:
             found_matching_face = False
             for prev_id, prev_face_box in prev_face_positions.items():
@@ -461,7 +466,7 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
     time_at_end = time.time()
     current_face_positions = saveFaceImage(frame_org, current_face_positions, time_at_end, prev_face_positions)
 
-    #ADD lost faces back to dict
+    # ADD lost faces back to dict
     for prev_face, prev_face_data in prev_face_positions.items():
         found_match = False
         for current_face, current_face_data in current_face_positions.items():
@@ -471,7 +476,7 @@ def faceMain(frame_org, prev_face_positions, face_id_counter):
             current_face_positions[prev_face] = [None, prev_face_data[1], prev_face_data[2], prev_face_data[3], prev_face_data[4], prev_face_data[5]]
 
 
-    #print("current:", current_face_positions)
+    print("current:", current_face_positions)
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), auditoryPrompt(current_face_positions, frame.shape, time_at_end), face_id_counter
 
 
@@ -505,9 +510,9 @@ def combine_lists_with_overlap(previous_frame, current_frame):
     for i, prev_word in enumerate(previous_frame):
         for j, current_word in enumerate(current_frame):
             if previous_frame[i][0] == current_frame[j][0]:
-                #Check 2 more words
-                if i+2 < len(previous_frame) and j+2 < len(current_frame):
-                    if previous_frame[i+1][0] == current_frame[j+1][0] and previous_frame[i+2][0] == current_frame[j+2][0]:
+                # Check 2 more words
+                if i+3 < len(previous_frame) and j+3 < len(current_frame):
+                    if previous_frame[i+1][0] == current_frame[j+1][0] and previous_frame[i+2][0] == current_frame[j+2][0] and previous_frame[i+3][0] == current_frame[j+3][0]:
                         prev_index_3overlap.append(i)
                         current_index_3overlap.append(j)
                         break
@@ -524,7 +529,7 @@ def combine_lists_with_overlap(previous_frame, current_frame):
 
     print(prev_index_3overlap)
     print(current_index_3overlap)
-    #For every found overlap add to combined, if gaps fill in
+    # For every found overlap add to combined, if gaps fill in
 
     combined = []
 
@@ -560,7 +565,7 @@ def combine_lists_with_overlap(previous_frame, current_frame):
                     if previous_frame[prev_index_3overlap[i+1]][2] == float('inf'):#TIME
                         combined[len(combined) - 1][2] = float('inf')
 
-    #print(len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1], "PRIMERJAMO Z", len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1])
+    # print(len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1], "PRIMERJAMO Z", len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1])
     if len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1] == len(current_frame) - current_index_3overlap[len(current_index_3overlap)-1]:
         print("NA KONCU MEŠANO")
         diff = len(previous_frame) - prev_index_3overlap[len(prev_index_3overlap)-1]
@@ -604,9 +609,9 @@ def textMain(frame, read_queue):
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    #frame = cv2.GaussianBlur(frame, (5, 5), 1)
-    #frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # frame = cv2.GaussianBlur(frame, (5, 5), 1)
+    # frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
 
     text_res = pytesseract.image_to_data(frame, lang='slv', output_type='data.frame')
     text_res = text_res[text_res.conf >= 85]
@@ -628,7 +633,7 @@ def textMain(frame, read_queue):
 
     # Create a new DataFrame containing the filtered rows
     text_res = pd.DataFrame(filtered_rows)
-    #print(text_res)
+    # print(text_res)
     lines = []
     time_lines = time.time()
     for index, row in text_res.iterrows():
@@ -646,12 +651,12 @@ def textMain(frame, read_queue):
     else:
         read_queue = combine_lists_with_overlap(read_queue, lines)
 
-    #combined_string = ""
-    #for item in read_queue:
-        #combined_string += item[0]
+    # combined_string = ""
+    # for item in read_queue:
+        # combined_string += item[0]
 
     # Using list comprehension
-    #combined_string = ' '.join([item[0] for item in read_queue])
+    # combined_string = ' '.join([item[0] for item in read_queue])
 
     print("before speech:", len(read_queue))
     # asyncio.run(speech(name_prompt))
@@ -662,13 +667,15 @@ def textMain(frame, read_queue):
         prompt = ''
         print(read_queue)
         for i in range(0, len(read_queue)):
-            print(read_queue[i][2])
+            # print(read_queue[i][2])
             if read_queue[i][2] == float('inf'):
                 continue
             num_word += 1
             read_queue[i][2] = float('inf')
             prompt = prompt + " " + read_queue[i][0]
-            if num_word > 10 and ('.' in read_queue[i][0] or ',' in read_queue[i][0]):
+            if num_word > 10 and ('.' in read_queue[i][0] or '!' in read_queue[i][0] or '?' in read_queue[i][0]):
+                break
+            if num_word > 17 and (',' in read_queue[i][0]):
                 break
             if num_word > 25:
                 break
@@ -700,7 +707,7 @@ def detectTextArea(frame):
     image = cv2.resize(frame, (newW, newH))
     (H, W) = image.shape[:2]
 
-    blob = cv2.dnn.blobFromImage(orig, 1.0, (W, H),(123.68, 116.78, 103.94), swapRB=True, crop=False)
+    blob = cv2.dnn.blobFromImage(orig, 1.0, (W, H), (123.68, 116.78, 103.94), swapRB=True, crop=False)
     net.setInput(blob)
     (scores, geometry) = net.forward(layerNames)
 
@@ -754,14 +761,13 @@ def detectTextArea(frame):
 
     (frame_H, frame_W) = frame.shape[:2]
     if min_x == float('inf') or min_y == float('inf') or max_x == float('inf') or max_y == float('inf'):
-        print("ASLKDJKLASDSADJLČASD")
         return orig, (0, 0, frame_W-1, frame_H-1)
     min_x = int(min_x)
     min_y = int(min_y)
     max_x = int(max_x)
     max_y = int(max_y)
 
-    #Padding
+    # Padding
     min_x = max(0, min_x - 10)
     min_y = max(0, min_y - 10)
     max_x = min(max_x + 10, frame_W-1)
@@ -774,36 +780,100 @@ def detectTextArea(frame):
 
 def main():
     use_face_or_text_main = True
+    num_blurry = 0
+
     def update_frame(prev_frame_time, prev_face_positions, face_id_counter, read_queue):
         nonlocal use_face_or_text_main
+        nonlocal num_blurry
+        global previous_thread
+        global num_no_faces
         rval, frame = vc.read()
         if rval:
 
             if use_face_or_text_main:
                 (mean, blurry) = detectBlur(frame)
+                if blurry:
+                    num_blurry += 1
+                else:
+                    num_blurry = 0
                 color = (0, 0, 255) if blurry else (0, 255, 0)
                 textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
                 textBlur = textBlur.format(mean)
-                if not blurry:
+                cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
+
+                if num_blurry == 0:
                     frame, prev_face_positions, face_id_counter = faceMain(frame, prev_face_positions, face_id_counter)
+                    if num_no_faces == 30:
+                        new_thread = None
+                        if not previous_thread or not previous_thread.is_alive():
+                            print('Pred vami ni zaznanih oseb!')
+                            new_thread = threading.Thread(target=speech, args=('Pred vami ni zaznanih oseb!',))
+                            new_thread.start()
+                        if new_thread:
+                            previous_thread = new_thread
+                elif num_blurry == 10:
+                    new_thread = None
+                    if not previous_thread or not previous_thread.is_alive():
+                        print('Slika je zamegljena, stojte pri miru!')
+                        new_thread = threading.Thread(target=speech, args=('Slika je zamegljena, stojte pri miru!',))
+                        new_thread.start()
+                    if new_thread:
+                        previous_thread = new_thread
             else:
                 frame, (min_x, min_y, max_x, max_y) = detectTextArea(frame)
+                print(min_x, min_y, max_x, max_y, frame.shape)
 
-                (mean, blurry) = detectBlur(frame[min_y:max_y, min_x:max_x])
-                color = (0, 0, 255) if blurry else (0, 255, 0)
-                textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
-                textBlur = textBlur.format(mean)
+                if min_x < 10 and frame.shape[1] - max_x < 10:
+                    new_thread = None
+                    if not previous_thread or not previous_thread.is_alive():
+                        print('Cel tekst ni v objektivu, postavite se drugače!')
+                        new_thread = threading.Thread(target=speech, args=('Cel tekst ni v objektivu, postavite se drugače!',))
+                        new_thread.start()
+                    if new_thread:
+                        previous_thread = new_thread
+                elif min_x < 10:
+                    new_thread = None
+                    if not previous_thread or not previous_thread.is_alive():
+                        print('Poglejte malo bolj levo, ker je tekst na robu!')
+                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj levo, ker je tekst na robu!',))
+                        new_thread.start()
+                    if new_thread:
+                        previous_thread = new_thread
+                elif frame.shape[1] - max_x < 10:
+                    new_thread = None
+                    if not previous_thread or not previous_thread.is_alive():
+                        print('Poglejte malo bolj desno, ker je tekst na robu!')
+                        new_thread = threading.Thread(target=speech, args=('Poglejte malo bolj desno, ker je tekst na robu!',))
+                        new_thread.start()
+                    if new_thread:
+                        previous_thread = new_thread
+                else:
+                    (mean, blurry) = detectBlur(frame[min_y:max_y, min_x:max_x])
+                    if blurry:
+                        num_blurry += 1
+                    else:
+                        num_blurry = 0
+                    color = (0, 0, 255) if blurry else (0, 255, 0)
+                    textBlur = "Blurry ({:.4f})" if blurry else "Not Blurry ({:.4f})"
+                    textBlur = textBlur.format(mean)
+                    cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
 
-                if not blurry:
-                    _, read_queue = textMain(frame[min_y:max_y, min_x:max_x], read_queue)
+                    if num_blurry == 0:
+                        _, read_queue = textMain(frame[min_y:max_y, min_x:max_x], read_queue)
+                    elif num_blurry == 10:
+                        new_thread = None
+                        if not previous_thread or not previous_thread.is_alive():
+                            print('Slika je zamegljena, stojte pri miru!')
+                            new_thread = threading.Thread(target=speech, args=('Slika je zamegljena, stojte pri miru!',))
+                            new_thread.start()
+                        if new_thread:
+                            previous_thread = new_thread
 
             new_frame_time = time.time()
             fps = 1 / (new_frame_time - prev_frame_time)
             prev_frame_time = new_frame_time
             fps = str(round(fps, 2))
             cv2.putText(frame, fps, (7, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 1, cv2.LINE_AA)
-
-            cv2.putText(frame, textBlur, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 1)
 
             # Display the frame in Tkinter window
             imgtk = ImageTk.PhotoImage(image=Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
@@ -821,14 +891,11 @@ def main():
         else:
             toggle_button.config(text='Spremeni na zaznavo obrazov')
 
-    vc = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    vc = cv2.VideoCapture(1, cv2.CAP_DSHOW)
     vc.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     vc.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    if vc.isOpened():  # try to get the first frame
-        rval, frame = vc.read()
-    else:
-        rval = False
+    _, frame = vc.read()
 
     window = tk.Tk()  # Makes main window
     window.wm_title("Pomoč slabovidnim")
@@ -849,7 +916,6 @@ def main():
 
     window.mainloop()
 
-    cv2.destroyAllWindows()
     vc.release()
 
 
